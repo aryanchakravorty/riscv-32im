@@ -1,0 +1,39 @@
+# Vivado build output directories
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+xsim.dir/
+.Xil/
+
+# Vivado synthesis/implementation run folders
+*.runs/
+
+# Vivado logs and journals
+vivado.log
+vivado.jou
+xelab.log
+xvlog.log
+*.log
+*.jou
+
+# Vivado backup/lock/dump artifacts
+*.bak
+*.lck
+fsm_encoding.os
+*.dmp
+
+# Bitstream outputs
+*.bit
+
+# OS-generated files
+Thumbs.db
+.DS_Store
+
+# Keep project/source artifacts tracked
+!*.xpr
+!*.v
+!*.vh
+!*.hex
+!*.tcl
+!*.md
