@@ -16,6 +16,7 @@ xelab.log
 xvlog.log
 *.log
 *.jou
+*.pb
 
 # Vivado backup/lock/dump artifacts
 *.bak
@@ -23,6 +24,12 @@ xvlog.log
 fsm_encoding.os
 *.dmp
 *.str
+hs_err_pid*
+
+# Toolchain build outputs
+*.elf
+*.map
+*.lst
 
 # Bitstream outputs
 *.bit

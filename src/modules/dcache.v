@@ -3,15 +3,17 @@
 module dcache (
     input               clk,
     input               rst,
-    input  [31:0]       addr,          // byte address from EX/MEM
-    input  [31:0]       write_data,    // rs2_data
-    input  [3:0]        write_strobe,  // byte enables
-    input               read_en,       // mem_read_in
-    input               write_en,      // mem_write_in
+    input  [31:0]       addr,
+    input  [31:0]       write_data,
+    input  [3:0]        write_strobe,
+    input               read_en,
+    input               write_en,
     output [31:0]       read_data,
     output              stall,
+    output wire         hit_pulse,
+    output wire         miss_pulse,
+    output wire         writeback_pulse,
 
-    // Memory interface (to dmem_model)
     output reg [31:0]   mem_addr,
     output reg [31:0]   mem_wdata,
     output reg [3:0]    mem_wstrobe,
@@ -20,7 +22,6 @@ module dcache (
     input  [31:0]       mem_rdata,
     input               mem_ready,
 
-    // Performance counters
     output reg [31:0]   hit_count,
     output reg [31:0]   miss_count,
     output reg [31:0]   writeback_count
@@ -31,7 +32,6 @@ module dcache (
 localparam IDLE  = 2'd0;
 localparam EVICT = 2'd1;
 localparam FILL  = 2'd2;
-localparam DONE  = 2'd3;
 
 reg [1:0] state;
 
@@ -62,6 +62,9 @@ wire [31:0] hit_read_data = data_array[addr_index][addr_word_off*32 +: 32];
 
 reg stall_r;
 assign stall = stall_r;
+assign hit_pulse       = (state == IDLE) && (read_en || write_en) && cache_hit;
+assign miss_pulse      = (state == IDLE) && (read_en || write_en) && !cache_hit;
+assign writeback_pulse = (state == EVICT) && (evict_count == 3'd0) && mem_ready;
 assign read_data = (state == IDLE && read_en && cache_hit) ? hit_read_data : miss_read_data;
 
 always @(*) begin
@@ -243,13 +246,6 @@ always @(posedge clk or negedge rst) begin
                         mem_addr   <= mem_addr + 32'd4;
                     end
                 end
-            end
-
-            DONE: begin
-                mem_read    <= 1'b0;
-                mem_write   <= 1'b0;
-                mem_wstrobe <= 4'b0;
-                state       <= IDLE;
             end
 
             default: begin
