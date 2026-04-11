@@ -22,6 +22,7 @@ module tb_dcache;
 
     wire [31:0] hit_count;
     wire [31:0] miss_count;
+    wire [31:0] writeback_count;
 
     integer t1_stall_cycles;
     integer t3_stall_cycles;
@@ -58,7 +59,8 @@ module tb_dcache;
         .mem_rdata(mem_rdata),
         .mem_ready(mem_ready),
         .hit_count(hit_count),
-        .miss_count(miss_count)
+        .miss_count(miss_count),
+        .writeback_count(writeback_count)
     );
 
     dmem_model #(

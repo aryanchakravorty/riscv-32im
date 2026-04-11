@@ -22,138 +22,189 @@ module dcache (
 
     // Performance counters
     output reg [31:0]   hit_count,
-    output reg [31:0]   miss_count
+    output reg [31:0]   miss_count,
+    output reg [31:0]   writeback_count
 );
 
 `include "opcode.vh"
 
-localparam IDLE      = 2'd0;
-localparam MISS_READ = 2'd1;
-localparam FILL      = 2'd2;
-localparam WRITE_MEM = 2'd3;
+localparam IDLE  = 2'd0;
+localparam EVICT = 2'd1;
+localparam FILL  = 2'd2;
+localparam DONE  = 2'd3;
 
 reg [1:0] state;
-reg       dcache_busy;
 
-// Direct-mapped arrays
-reg [`TAG_BITS-1:0]     tag_array   [0:`NUM_SETS-1];
-reg                     valid_array [0:`NUM_SETS-1];
-reg [`LINE_SIZE*8-1:0]  data_array  [0:`NUM_SETS-1];
+reg [19:0]   tag_array   [0:127];
+reg          valid_array [0:127];
+reg          dirty_array [0:127];
+reg [255:0]  data_array  [0:127];
 
-reg [2:0]  fill_count;
 reg [31:0] line_buffer [0:7];
-reg        suppress_once;
-reg [31:0] miss_read_data;
 
-// Captured request info
-reg [`TAG_BITS-1:0]    req_tag;
-reg [`INDEX_BITS-1:0]  req_index;
-reg [2:0]              req_word_off;
-reg [31:0]             req_write_addr;
-reg [31:0]             req_write_data;
-reg [3:0]              req_write_strobe;
+reg [2:0]   fill_count;
+reg [2:0]   evict_count;
+reg [255:0] evict_line_snapshot;
+reg [31:0]  pending_write_data;
+reg [3:0]   pending_write_strobe;
+reg         has_pending_write;
+reg [19:0]  req_tag;
+reg [6:0]   req_index;
+reg [2:0]   req_word_off;
+reg [31:0]  miss_read_data;
 
-wire [`TAG_BITS-1:0]   addr_tag      = addr[31:11];
-wire [`INDEX_BITS-1:0] addr_index    = addr[10:5];
-wire [2:0]             addr_word_off = addr[4:2];
-wire                   hit_condition = valid_array[addr_index] && (tag_array[addr_index] == addr_tag);
-wire [31:0]            hit_read_data = data_array[addr_index][addr_word_off*32 +: 32];
-wire will_start_read_miss = (state == IDLE) && !suppress_once && read_en && !hit_condition;
-wire will_start_write     = (state == IDLE) && !suppress_once && write_en;
-assign stall = (state != IDLE) || will_start_read_miss || will_start_write;
-assign read_data = ((state == IDLE) && read_en && hit_condition) ? hit_read_data : miss_read_data;
+wire [19:0] addr_tag      = addr[31:12];
+wire [6:0]  addr_index    = addr[11:5];
+wire [2:0]  addr_word_off = addr[4:2];
+
+wire        cache_hit     = valid_array[addr_index] && (tag_array[addr_index] == addr_tag);
+wire [31:0] hit_read_data = data_array[addr_index][addr_word_off*32 +: 32];
+
+reg stall_r;
+assign stall = stall_r;
+assign read_data = (state == IDLE && read_en && cache_hit) ? hit_read_data : miss_read_data;
+
+always @(*) begin
+    stall_r = (state != IDLE);
+    if (state == IDLE) begin
+        if (read_en && !cache_hit) begin
+            stall_r = 1'b1;
+        end else if (write_en && !cache_hit) begin
+            stall_r = 1'b1;
+        end else begin
+            stall_r = 1'b0;
+        end
+    end
+end
 
 integer i;
+integer j;
 always @(posedge clk or negedge rst) begin
     if (!rst) begin
-        state         <= IDLE;
-        dcache_busy   <= 1'b0;
-        miss_read_data <= 32'h0;
-        mem_addr      <= 32'h0;
-        mem_wdata     <= 32'h0;
-        mem_wstrobe   <= 4'b0;
-        mem_read      <= 1'b0;
-        mem_write     <= 1'b0;
-        hit_count     <= 32'h0;
-        miss_count    <= 32'h0;
-        fill_count    <= 3'h0;
-        suppress_once <= 1'b0;
-        req_tag       <= {`TAG_BITS{1'b0}};
-        req_index     <= {`INDEX_BITS{1'b0}};
-        req_word_off  <= 3'h0;
-        req_write_addr   <= 32'h0;
-        req_write_data   <= 32'h0;
-        req_write_strobe <= 4'b0;
+        state                <= IDLE;
+        mem_addr             <= 32'h0;
+        mem_wdata            <= 32'h0;
+        mem_wstrobe          <= 4'b0;
+        mem_read             <= 1'b0;
+        mem_write            <= 1'b0;
+        hit_count            <= 32'h0;
+        miss_count           <= 32'h0;
+        writeback_count      <= 32'h0;
+        fill_count           <= 3'h0;
+        evict_count          <= 3'h0;
+        evict_line_snapshot  <= 256'h0;
+        pending_write_data   <= 32'h0;
+        pending_write_strobe <= 4'h0;
+        has_pending_write    <= 1'b0;
+        req_tag              <= 20'h0;
+        req_index            <= 7'h0;
+        req_word_off         <= 3'h0;
+        miss_read_data       <= 32'h0;
 
-        for (i = 0; i < `NUM_SETS; i = i + 1) begin
-            tag_array[i]   <= {`TAG_BITS{1'b0}};
+        for (i = 0; i < `D_NUM_SETS; i = i + 1) begin
+            tag_array[i]   <= {`D_TAG_BITS{1'b0}};
             valid_array[i] <= 1'b0;
+            dirty_array[i] <= 1'b0;
             data_array[i]  <= {(`LINE_SIZE*8){1'b0}};
+        end
+
+        for (j = 0; j < 8; j = j + 1) begin
+            line_buffer[j] <= 32'h0;
         end
     end else begin
         case (state)
             IDLE: begin
-                dcache_busy <= 1'b0;
                 mem_read    <= 1'b0;
                 mem_write   <= 1'b0;
                 mem_wstrobe <= 4'b0;
-                if (suppress_once) begin
-                    suppress_once <= 1'b0;
-                end else begin
-                    if (read_en) begin
-                        if (hit_condition) begin
-                            hit_count  <= hit_count + 1'b1;
+
+                if (read_en) begin
+                    if (cache_hit) begin
+                        hit_count      <= hit_count + 1'b1;
+                        miss_read_data <= hit_read_data;
+                    end else begin
+                        miss_count        <= miss_count + 1'b1;
+                        req_tag           <= addr_tag;
+                        req_index         <= addr_index;
+                        req_word_off      <= addr_word_off;
+                        has_pending_write <= 1'b0;
+                        if (valid_array[addr_index] && dirty_array[addr_index]) begin
+                            evict_line_snapshot <= data_array[addr_index];
+                            evict_count         <= 3'd0;
+                            writeback_count     <= writeback_count + 1'b1;
+                            mem_write           <= 1'b1;
+                            mem_wstrobe         <= 4'b1111;
+                            mem_addr            <= {tag_array[addr_index], addr_index, 5'b00000};
+                            mem_wdata           <= data_array[addr_index][31:0];
+                            state               <= EVICT;
                         end else begin
-                            // Read miss -> fetch full line.
-                            req_tag      <= addr_tag;
-                            req_index    <= addr_index;
-                            req_word_off <= addr_word_off;
-                            fill_count   <= 3'd0;
-                            miss_count   <= miss_count + 1'b1;
-
-                            mem_addr    <= {addr[31:5], 5'b0}; // line-aligned
-                            mem_read    <= 1'b1;
-                            dcache_busy <= 1'b1;
-                            state       <= MISS_READ;
+                            mem_read   <= 1'b1;
+                            fill_count <= 3'd0;
+                            mem_addr   <= {addr_tag, addr_index, 5'b00000};
+                            state      <= FILL;
                         end
-                    end else if (write_en) begin
-                        if (hit_condition) begin
-                            // Write-through + write hit update in cache line.
-                            if (write_strobe[0]) data_array[addr_index][addr_word_off*32 +: 8]       <= write_data[7:0];
-                            if (write_strobe[1]) data_array[addr_index][addr_word_off*32 + 8 +: 8]   <= write_data[15:8];
-                            if (write_strobe[2]) data_array[addr_index][addr_word_off*32 + 16 +: 8]  <= write_data[23:16];
-                            if (write_strobe[3]) data_array[addr_index][addr_word_off*32 + 24 +: 8]  <= write_data[31:24];
-                            hit_count <= hit_count + 1'b1;
+                    end
+                end else if (write_en) begin
+                    if (cache_hit) begin
+                        hit_count <= hit_count + 1'b1;
+                        if (write_strobe[0]) data_array[addr_index][addr_word_off*32 +: 8]      <= write_data[7:0];
+                        if (write_strobe[1]) data_array[addr_index][addr_word_off*32+8 +: 8]    <= write_data[15:8];
+                        if (write_strobe[2]) data_array[addr_index][addr_word_off*32+16 +: 8]   <= write_data[23:16];
+                        if (write_strobe[3]) data_array[addr_index][addr_word_off*32+24 +: 8]   <= write_data[31:24];
+                        dirty_array[addr_index] <= 1'b1;
+                    end else begin
+                        miss_count           <= miss_count + 1'b1;
+                        req_tag              <= addr_tag;
+                        req_index            <= addr_index;
+                        req_word_off         <= addr_word_off;
+                        pending_write_data   <= write_data;
+                        pending_write_strobe <= write_strobe;
+                        has_pending_write    <= 1'b1;
+                        if (valid_array[addr_index] && dirty_array[addr_index]) begin
+                            evict_line_snapshot <= data_array[addr_index];
+                            evict_count         <= 3'd0;
+                            writeback_count     <= writeback_count + 1'b1;
+                            mem_write           <= 1'b1;
+                            mem_wstrobe         <= 4'b1111;
+                            mem_addr            <= {tag_array[addr_index], addr_index, 5'b00000};
+                            mem_wdata           <= data_array[addr_index][31:0];
+                            state               <= EVICT;
+                        end else begin
+                            mem_read   <= 1'b1;
+                            fill_count <= 3'd0;
+                            mem_addr   <= {addr_tag, addr_index, 5'b00000};
+                            state      <= FILL;
                         end
-                        // No-allocate on write miss: always forward write to memory.
-                        req_write_addr   <= addr;
-                        req_write_data   <= write_data;
-                        req_write_strobe <= write_strobe;
-
-                        mem_addr    <= addr;
-                        mem_wdata   <= write_data;
-                        mem_wstrobe <= write_strobe;
-                        mem_write   <= 1'b1;
-                        dcache_busy <= 1'b1;
-                        state       <= WRITE_MEM;
                     end
                 end
             end
 
-            MISS_READ: begin
-                mem_read  <= 1'b1;
-                mem_write <= 1'b0;
+            EVICT: begin
+                mem_read    <= 1'b0;
+                mem_write   <= 1'b1;
+                mem_wstrobe <= 4'b1111;
+
                 if (mem_ready) begin
-                    line_buffer[0] <= mem_rdata;
-                    fill_count     <= 3'd1;
-                    mem_addr       <= mem_addr + 32'd4;
-                    state          <= FILL;
+                    if (evict_count == 3'd7) begin
+                        dirty_array[req_index] <= 1'b0;
+                        mem_write   <= 1'b0;
+                        mem_read    <= 1'b1;
+                        fill_count  <= 3'd0;
+                        mem_addr    <= {req_tag, req_index, 5'b00000};
+                        state       <= FILL;
+                    end else begin
+                        evict_count <= evict_count + 1'b1;
+                        mem_addr    <= mem_addr + 32'd4;
+                        mem_wdata   <= evict_line_snapshot[(evict_count+1)*32 +: 32];
+                    end
                 end
             end
 
             FILL: begin
-                mem_read  <= 1'b1;
-                mem_write <= 1'b0;
+                mem_read    <= 1'b1;
+                mem_write   <= 1'b0;
+                mem_wstrobe <= 4'b0;
+
                 if (mem_ready) begin
                     line_buffer[fill_count] <= mem_rdata;
                     if (fill_count == 3'd7) begin
@@ -161,6 +212,16 @@ always @(posedge clk or negedge rst) begin
                         tag_array[req_index]   <= req_tag;
                         data_array[req_index]  <= {mem_rdata, line_buffer[6], line_buffer[5], line_buffer[4],
                                                    line_buffer[3], line_buffer[2], line_buffer[1], line_buffer[0]};
+
+                        if (has_pending_write) begin
+                            dirty_array[req_index] <= 1'b1;
+                            if (pending_write_strobe[0]) data_array[req_index][req_word_off*32 +: 8]     <= pending_write_data[7:0];
+                            if (pending_write_strobe[1]) data_array[req_index][req_word_off*32+8 +: 8]   <= pending_write_data[15:8];
+                            if (pending_write_strobe[2]) data_array[req_index][req_word_off*32+16 +: 8]  <= pending_write_data[23:16];
+                            if (pending_write_strobe[3]) data_array[req_index][req_word_off*32+24 +: 8]  <= pending_write_data[31:24];
+                        end else begin
+                            dirty_array[req_index] <= 1'b0;
+                        end
 
                         case (req_word_off)
                             3'd0: miss_read_data <= line_buffer[0];
@@ -174,10 +235,9 @@ always @(posedge clk or negedge rst) begin
                             default: miss_read_data <= 32'h0;
                         endcase
 
-                        mem_read    <= 1'b0;
-                        dcache_busy <= 1'b0;
-                        suppress_once <= 1'b1;
-                        state       <= IDLE;
+                        has_pending_write <= 1'b0;
+                        mem_read          <= 1'b0;
+                        state             <= IDLE;
                     end else begin
                         fill_count <= fill_count + 1'b1;
                         mem_addr   <= mem_addr + 32'd4;
@@ -185,23 +245,18 @@ always @(posedge clk or negedge rst) begin
                 end
             end
 
-            WRITE_MEM: begin
+            DONE: begin
                 mem_read    <= 1'b0;
-                mem_write   <= 1'b1;
-                mem_addr    <= req_write_addr;
-                mem_wdata   <= req_write_data;
-                mem_wstrobe <= req_write_strobe;
-                if (mem_ready) begin
-                    mem_write   <= 1'b0;
-                    mem_wstrobe <= 4'b0;
-                    dcache_busy <= 1'b0;
-                    suppress_once <= 1'b1;
-                    state       <= IDLE;
-                end
+                mem_write   <= 1'b0;
+                mem_wstrobe <= 4'b0;
+                state       <= IDLE;
             end
 
             default: begin
-                state <= IDLE;
+                state       <= IDLE;
+                mem_read    <= 1'b0;
+                mem_write   <= 1'b0;
+                mem_wstrobe <= 4'b0;
             end
         endcase
     end

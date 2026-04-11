@@ -24,7 +24,7 @@ Pipeline stages:
   - `divider.v`: iterative divider/remainder with `start/busy` handshake
 - **Caches**
   - **I-cache (`icache.v`)**: 4 KB, 2-way set-associative, 64 sets, 32-byte lines, pseudo-LRU replacement
-  - **D-cache (`dcache.v`)**: 2 KB, direct-mapped, 64 sets, 32-byte lines, write-through + no-write-allocate policy
+  - **D-cache (`dcache.v`)**: 4 KB, direct-mapped, 128 sets, 32-byte lines, write-back + write-allocate policy (`writeback_count` exposed for diagnostics)
 - **Branch Target Buffer (BTB)**
   - 16-entry direct-mapped table
   - 2-bit saturating counters
@@ -67,11 +67,13 @@ riscv-32im/
 ### Simulation
 
 1. Open `riscv-32im.xpr`.
-2. In **Simulation Sources**, select a testbench from `tb/` (project default simulation top is `tb_pipeline_timing`).
+2. In **Simulation Sources**, select a testbench from `tb/` (project default simulation top is `tb_pipeline_final`).
 3. Keep memory images from `sim/` available to simulation runtime.
    - `imem_model.v` loads `imem.hex`
    - `dmem_model.v` loads `dmem.hex` (fallback: `dmem_final.hex`)
 4. Run **Behavioral Simulation** (`xsim`).
+   - `tb_pipeline_final.v`: final 40-check pipeline regression
+   - `tb_dcache_wb.v`: isolated write-back/write-allocate D-cache policy tests
 
 ### Synthesis / Implementation
 

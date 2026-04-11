@@ -10,6 +10,9 @@
 `define INDEX_BITS    6
 `define OFFSET_BITS   5
 `define NUM_SETS      64
+`define D_NUM_SETS      128
+`define D_INDEX_BITS    7
+`define D_TAG_BITS      20
 `define WAYS          2
 `define LINE_SIZE     32     // bytes (8 words)
 `define CACHE_SIZE    4096   // bytes

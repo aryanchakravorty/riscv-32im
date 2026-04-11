@@ -16,6 +16,9 @@ module tb_pipeline_final;
     integer total_passed;
     integer total_failed;
     integer current_case;
+    localparam [31:0] ADDR_100  = 32'h00000100;
+    localparam [31:0] ADDR_900  = 32'h00000900;
+    localparam [31:0] ADDR_1100 = 32'h00001100;
 
     pipe DUT (
         .clk(clk),
@@ -135,6 +138,12 @@ module tb_pipeline_final;
             $display("HARDCORE 40-POINT TEST PASSED: SYSTEM ARCHITECTURE IS 100%% STABLE!");
         else
             $display("HARDCORE TEST FAILED: PLEASE ANALYZE PIPELINE DATA FLOW.");
+
+        $display("u_dcache.valid_array[127] = %0b", DUT.u_dcache.valid_array[127]);
+        $display("u_dcache.valid_array[64]  = %0b", DUT.u_dcache.valid_array[64]);
+        $display("0x100  -> tag=%0h index=%0d word=%0d",  ADDR_100[31:12],  ADDR_100[11:5],  ADDR_100[4:2]);
+        $display("0x900  -> tag=%0h index=%0d word=%0d",  ADDR_900[31:12],  ADDR_900[11:5],  ADDR_900[4:2]);
+        $display("0x1100 -> tag=%0h index=%0d word=%0d", ADDR_1100[31:12], ADDR_1100[11:5], ADDR_1100[4:2]);
 
         $finish;
     end

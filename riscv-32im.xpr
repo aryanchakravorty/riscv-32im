@@ -61,7 +61,7 @@
     <Option Name="IPStaticSourceDir" Val="$PIPUSERFILESDIR/ipstatic"/>
     <Option Name="EnableBDX" Val="FALSE"/>
     <Option Name="DSABoardId" Val="nexys-a7-100t"/>
-    <Option Name="WTXSimLaunchSim" Val="101"/>
+    <Option Name="WTXSimLaunchSim" Val="113"/>
     <Option Name="WTModelSimLaunchSim" Val="0"/>
     <Option Name="WTQuestaLaunchSim" Val="0"/>
     <Option Name="WTIesLaunchSim" Val="0"/>
@@ -274,6 +274,13 @@
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
+      <File Path="$PPRDIR/tb/tb_pipeline_btb.v">
+        <FileInfo>
+          <Attr Name="UsedIn" Val="synthesis"/>
+          <Attr Name="UsedIn" Val="implementation"/>
+          <Attr Name="UsedIn" Val="simulation"/>
+        </FileInfo>
+      </File>
       <File Path="$PPRDIR/tb/tb_pipeline_final.v">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
@@ -301,7 +308,7 @@
       <File Path="$PPRDIR/sim/imem_final.hex"/>
       <File Path="$PPRDIR/sim/newton_imem.hex"/>
       <File Path="$PPRDIR/sim/pipeline_btb_imem.hex"/>
-      <File Path="$PPRDIR/tb/tb_pipeline_btb.v">
+      <File Path="$PPRDIR/tb/tb_dcache_wb.v">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
@@ -310,7 +317,7 @@
       </File>
       <Config>
         <Option Name="DesignMode" Val="RTL"/>
-        <Option Name="TopModule" Val="tb_pipeline_timing"/>
+        <Option Name="TopModule" Val="tb_pipeline_final"/>
         <Option Name="TopLib" Val="xil_defaultlib"/>
         <Option Name="VerilogDir" Val="$PSRCDIR/sources_1/imports/5-stage-version"/>
         <Option Name="TransportPathDelay" Val="0"/>

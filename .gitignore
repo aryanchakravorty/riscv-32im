@@ -22,6 +22,7 @@ xvlog.log
 *.lck
 fsm_encoding.os
 *.dmp
+*.str
 
 # Bitstream outputs
 *.bit

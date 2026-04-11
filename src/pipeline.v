@@ -48,6 +48,7 @@ wire [31:0] dcache_mem_rdata;
 wire        dcache_mem_ready;
 wire [31:0] dcache_hit_count;
 wire [31:0] dcache_miss_count;
+wire [31:0] dcache_writeback_count;
 
 wire [31:0] if_pc, if_pc_plus4, if_instruction;
 wire if_valid;
@@ -274,7 +275,8 @@ dcache u_dcache (
     .mem_rdata(dcache_mem_rdata),
     .mem_ready(dcache_mem_ready),
     .hit_count(dcache_hit_count),
-    .miss_count(dcache_miss_count)
+    .miss_count(dcache_miss_count),
+    .writeback_count(dcache_writeback_count)
 );
 
 dmem_model #(
