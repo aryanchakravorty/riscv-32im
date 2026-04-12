@@ -52,6 +52,7 @@ reg [19:0]  req_tag;
 reg [6:0]   req_index;
 reg [2:0]   req_word_off;
 reg [31:0]  miss_read_data;
+reg         just_filled;
 
 wire [19:0] addr_tag      = addr[31:12];
 wire [6:0]  addr_index    = addr[11:5];
@@ -62,7 +63,7 @@ wire [31:0] hit_read_data = data_array[addr_index][addr_word_off*32 +: 32];
 
 reg stall_r;
 assign stall = stall_r;
-assign hit_pulse       = (state == IDLE) && (read_en || write_en) && cache_hit;
+assign hit_pulse       = (state == IDLE) && (read_en || write_en) && cache_hit && !just_filled;
 assign miss_pulse      = (state == IDLE) && (read_en || write_en) && !cache_hit;
 assign writeback_pulse = (state == EVICT) && (evict_count == 3'd0) && mem_ready;
 assign read_data = (state == IDLE && read_en && cache_hit) ? hit_read_data : miss_read_data;
@@ -103,6 +104,7 @@ always @(posedge clk or negedge rst) begin
         req_index            <= 7'h0;
         req_word_off         <= 3'h0;
         miss_read_data       <= 32'h0;
+        just_filled          <= 1'b0;
 
         for (i = 0; i < `D_NUM_SETS; i = i + 1) begin
             tag_array[i]   <= {`D_TAG_BITS{1'b0}};
@@ -120,6 +122,7 @@ always @(posedge clk or negedge rst) begin
                 mem_read    <= 1'b0;
                 mem_write   <= 1'b0;
                 mem_wstrobe <= 4'b0;
+                just_filled <= 1'b0;
 
                 if (read_en) begin
                     if (cache_hit) begin
@@ -241,6 +244,7 @@ always @(posedge clk or negedge rst) begin
                         has_pending_write <= 1'b0;
                         mem_read          <= 1'b0;
                         state             <= IDLE;
+                        just_filled       <= 1'b1;
                     end else begin
                         fill_count <= fill_count + 1'b1;
                         mem_addr   <= mem_addr + 32'd4;

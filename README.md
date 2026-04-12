@@ -1,7 +1,7 @@
 # RV32IM Pipeline Processor
 
 ## Abstract
-This project implements a synthesizable 5-stage RV32IM pipeline in Verilog with RV32M integer multiply/divide support, IEEE-754 single-precision floating-point execution, a 2-way set-associative instruction cache, a write-back/write-allocate data cache, and BTB-based dynamic branch prediction. Measured in Vivado xsim, the latest `tb_bench_all` run reports **Matrix Multiply (4×4): 1521 cycles, 0.83 IPC, 96% D-cache hit rate**; the floating-point Newton kernel converges to **sqrt(2) = 0x3FB504F3 (~1.4142)** in **5 iterations**; and loop-heavy benchmark behavior shows **79% BTB accuracy** (from dedicated MatMul benchmark profiling).
+This project implements a synthesizable 5-stage RV32IM pipeline in Verilog with RV32M integer multiply/divide support, IEEE-754 single-precision floating-point execution, a 2-way set-associative instruction cache, a write-back/write-allocate data cache, and BTB-based dynamic branch prediction. In the corrected `tb_bench_all` run (Vivado xsim), **MatMul (4x4) completes in 1521 cycles at 0.83 IPC with 95% D-cache hit rate** (within the typical ~85-96% range after cold fills), **Newton converges to sqrt(2) = 0x3FB504F3 in 300 cycles at 0.34 IPC with ~0% D-cache hit**, and the **Strided (32B) benchmark runs in 902 cycles at 0.25 IPC with ~0% D-cache hit**, which is expected for stride equal to cache line size.
 
 ## Architecture
 The processor follows a classic 5-stage in-order pipeline:
@@ -35,13 +35,13 @@ Key design decisions:
 
 Latest `tb_bench_all` output (Vivado log):
 
-| Benchmark | Total cycles | IPC | I$ hit% | D$ hit% | Writebacks | BTB accuracy |
-|---|---:|---:|---:|---:|---:|---:|
-| MatMul (4x4 int) | 1521 | 0.83 | 99%* | 96% | 0* | 79%* |
-| Newton (sqrt(2), FPU) | 300 | 0.34 | N/A | 50% | N/A | N/A |
-| Strided (32B) | 902 | 0.25 | N/A | 50% | N/A | N/A |
+| Benchmark | Cycles | IPC | D$ Hit% | D$ Stall% |
+|---|---:|---:|---:|---:|
+| MatMul (4x4 int) | 1521 | 0.83 | 95% | 7% |
+| Newton (sqrt(2)) | 300 | 0.34 | 0% | 6% |
+| Strided (32B) | 902 | 0.25 | 0% | 67% |
 
-\* `tb_bench_all` currently prints cycles/IPC/D$ statistics directly. I$/writeback/BTB values shown for MatMul are from the dedicated `tb_bench_matmul` performance report in the same simulation log.
+\* Newton and Strided showing 0% D$ hit is expected behavior (not a cache bug): Newton's loop is register-to-register FPU compute with no loop-body loads, and only one write-allocate miss occurs at the end; Strided uses stride = 32B (cache line size), so each access maps to a different line and misses.
 
 ## Performance Counter Methodology
 `perf_counters.v` uses cycle-accurate event counting with saturating 32-bit counters. Events are provided as single-cycle pulses from the pipeline and cache subsystems (`instr_retired`, `icache_stall`, `dcache_stall`, `load_use_stall`, `div_stall`, `branch_taken`, `mispredict`, `icache_hit/miss`, `dcache_hit/miss`, `dcache_writeback`). `total_cycles` increments every active cycle, and IPC is computed as `instrs_retired / total_cycles`.
@@ -85,14 +85,23 @@ riscv-32im/
 │  ├─ pipeline.v
 │  └─ top_fpga.v
 ├─ tb/
-│  ├─ tb_bench_all.v
-│  ├─ tb_bench_matmul.v
-│  ├─ tb_bench_newton.v
-│  ├─ tb_dcache_wb.v
-│  ├─ tb_newton_c.v
-│  ├─ tb_perf_report.v
-│  ├─ tb_pipeline_final.v
-│  └─ tb_uart.v
+│  ├─ tb_bench_all.v          # 3-benchmark runner (matmul, newton, strided)
+│  ├─ tb_bench_matmul.v       # matmul with full I$, BTB, writeback report
+│  ├─ tb_btb.v                # BTB unit tests
+│  ├─ tb_dcache_wb.v          # D-cache write-back/write-allocate verification
+│  ├─ tb_fetch_btb.v          # fetch + BTB integration
+│  ├─ tb_fpu_extended.v       # all 16 FPU operations
+│  ├─ tb_icache.v             # I-cache unit tests
+│  ├─ tb_pc_hold_stall.v      # PC hold correctness during cache stall
+│  ├─ tb_perf_report.v        # 40-test regression + performance counters
+│  ├─ tb_pipeline_btb.v       # BTB in full pipeline
+│  ├─ tb_pipeline_final.v     # 40-test gold standard regression
+│  ├─ tb_pipeline_fpu.v       # FPU in pipeline (stall, forwarding)
+│  ├─ tb_uart.v               # UART TX driver verification
+│  └─ archive/                # debug tools and superseded testbenches
+│     ├─ tb_bench_newton.v    # (covered by tb_bench_all)
+│     ├─ tb_newton_c.v        # (requires compiled C binary)
+│     └─ tb_pipeline_timing.v # (debug logging, no assertions)
 ├─ sim/
 │  ├─ imem.hex
 │  ├─ dmem.hex
